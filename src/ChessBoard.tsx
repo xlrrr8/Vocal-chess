@@ -4,6 +4,8 @@ import { Chess } from "chess.js";
 interface ChessBoardProps {
   fen: string;
   onMove: (from: string, to: string) => void;
+  lastMoveSquares?: { from: string; to: string } | null;
+  animatingSquare?: string | null;
 }
 
 type Square = {
@@ -15,7 +17,7 @@ type Square = {
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1];
 
-const ChessBoard: React.FC<ChessBoardProps> = ({ fen, onMove }) => {
+const ChessBoard: React.FC<ChessBoardProps> = ({ fen, onMove, lastMoveSquares, animatingSquare }) => {
   const [selected, setSelected] = useState<string | null>(null);
 
   const pieceMap = useMemo(() => {
@@ -53,12 +55,34 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ fen, onMove }) => {
     setSelected(null);
   };
 
-  const renderPiece = (symbol: string) => {
+  const handleDragStart = (e: React.DragEvent, coord: string) => {
+    e.dataTransfer.setData("from", coord);
+    setSelected(coord);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, to: string) => {
+    e.preventDefault();
+    const from = e.dataTransfer.getData("from");
+    if (from && from !== to) {
+      onMove(from, to);
+    }
+    setSelected(null);
+  };
+
+  const renderPiece = (symbol: string, coord: string, isAnimating: boolean = false) => {
     const isWhite = symbol === symbol.toUpperCase();
     const type = symbol.toLowerCase();
 
-    const baseClass = "piece";
-    const classes = [baseClass, isWhite ? "piece-white" : "piece-black", `piece-${type}`].join(" ");
+    const classes = [
+      "piece",
+      isWhite ? "piece-white" : "piece-black",
+      `piece-${type}`,
+      isAnimating ? "piece-pop" : "",
+    ].join(" ");
 
     const unicodeMap: Record<string, string> = {
       p: isWhite ? "♙" : "♟",
@@ -69,41 +93,69 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ fen, onMove }) => {
       k: isWhite ? "♔" : "♚",
     };
 
-    return <span className={classes}>{unicodeMap[type]}</span>;
+    return (
+      <span
+        draggable
+        onDragStart={(e) => handleDragStart(e, coord)}
+        className={classes}
+      >
+        {unicodeMap[type]}
+      </span>
+    );
   };
 
   return (
     <div className="board-wrapper">
-      <div className="board-coords board-coords-left">
-        {RANKS.map((r) => (
-          <span key={r}>{r}</span>
+      <div className="board-grid-container">
+        {/* The grid is 9 columns x 9 rows: 
+            Column 1: Rank labels
+            Columns 2-9: Squares
+            Rows 1-8: Squares/Ranks
+            Row 9: File labels
+        */}
+
+        {/* 8 rows of (Rank Label + 8 Squares) */}
+        {RANKS.map((rank) => (
+          <React.Fragment key={rank}>
+            <div className="coord-rank">{rank}</div>
+            {FILES.map((file) => {
+              const coord = `${file}${rank}`;
+              const isDark = (FILES.indexOf(file) + RANKS.indexOf(rank)) % 2 === 1;
+              const piece = pieceMap[coord];
+              const isSelected = selected === coord;
+              const isLastMoveFrom = lastMoveSquares?.from === coord;
+              const isLastMoveTo = lastMoveSquares?.to === coord;
+              const isAnimating = animatingSquare === coord;
+              return (
+                <div
+                  key={coord}
+                  className="square-container"
+                >
+                  <button
+                    aria-label={coord}
+                    className={[
+                      "square",
+                      isDark ? "square-dark" : "square-light",
+                      isSelected ? "square-selected" : "",
+                      (isLastMoveFrom || isLastMoveTo) ? "square-last-move" : "",
+                    ].join(" ")}
+                    onClick={() => handleSquareClick(coord)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, coord)}
+                  >
+                    {piece && renderPiece(piece, coord, isAnimating)}
+                  </button>
+                </div>
+              );
+            })}
+          </React.Fragment>
         ))}
-      </div>
-      <div className="board-coords board-coords-bottom">
+
+        {/* Row 9: Bottom File Labels (plus an empty corner at Column 1) */}
+        <div className="coord-corner" />
         {FILES.map((f) => (
-          <span key={f}>{f}</span>
+          <div key={`bot-${f}`} className="coord-file">{f}</div>
         ))}
-      </div>
-      <div className="board">
-        {squares.map((sq, idx) => {
-          const isDark = (FILES.indexOf(sq.file) + RANKS.indexOf(sq.rank)) % 2 === 1;
-          const piece = pieceMap[sq.coord];
-          const isSelected = selected === sq.coord;
-          return (
-            <button
-              key={sq.coord}
-              aria-label={sq.coord}
-              className={[
-                "square",
-                isDark ? "square-dark" : "square-light",
-                isSelected ? "square-selected" : "",
-              ].join(" ")}
-              onClick={() => handleSquareClick(sq.coord)}
-            >
-              {piece && renderPiece(piece)}
-            </button>
-          );
-        })}
       </div>
     </div>
   );
