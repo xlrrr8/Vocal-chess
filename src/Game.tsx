@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Chess } from "chess.js";
 import ChessBoard from "./ChessBoard";
-import VoiceController, { VoiceStatus, speak } from "./VoiceController";
 import { findBestMove, evaluate } from "./ChessEngine";
 import { playMoveSound, playCaptureSound, playCheckSound, playGameOverSound, playIllegalMoveSound } from "./sounds";
 
@@ -24,27 +23,10 @@ export type AnalysisData = {
   evalHistory: number[];
 };
 
-const sanToSpeech = (san: string) => {
-  let speech = san;
-  speech = speech.replace(/N/, "Knight ");
-  speech = speech.replace(/B/, "Bishop ");
-  speech = speech.replace(/R/, "Rook ");
-  speech = speech.replace(/Q/, "Queen ");
-  speech = speech.replace(/K/, "King ");
-  speech = speech.replace(/x/, "takes ");
-  speech = speech.replace(/\+/, " check");
-  speech = speech.replace(/#/, " checkmate");
-  speech = speech.replace(/O-O-O/, "Castles queenside");
-  speech = speech.replace(/O-O/, "Castles kingside");
-  return speech;
-};
-
 const App: React.FC = () => {
   const gameRef = useRef(new Chess());
   const [fen, setFen] = useState(gameRef.current.fen());
   const [moves, setMoves] = useState<MoveRecord[]>([]);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
-  const [lastCommand, setLastCommand] = useState<string>("");
   const movesEndRef = useRef<HTMLDivElement>(null);
 
   const [isAiMode, setIsAiMode] = useState<boolean>(false);
@@ -78,7 +60,6 @@ const App: React.FC = () => {
             const move = game.move({ from, to, promotion: "q" });
             if (move) {
               safeUpdateGame(from, to);
-              speak(`Computer plays ${sanToSpeech(move.san)}`);
             }
           }
         } catch (e) {
@@ -136,21 +117,6 @@ const App: React.FC = () => {
       }
     } catch (e) {
       playIllegalMoveSound();
-    }
-  };
-
-  const handleVoiceMove = (moveInput: string | { from: string; to: string }) => {
-    try {
-      const move = gameRef.current.move(typeof moveInput === 'string' ? moveInput : { ...moveInput, promotion: "q" });
-      if (move) {
-        safeUpdateGame(move.from, move.to);
-      } else {
-        playIllegalMoveSound();
-        throw new Error("Invalid move");
-      }
-    } catch (e) {
-      playIllegalMoveSound();
-      throw new Error("Invalid move");
     }
   };
 
@@ -212,7 +178,6 @@ const App: React.FC = () => {
     setShowModal(true);
     gameRef.current = new Chess();
     safeUpdateGame();
-    setLastCommand("");
   };
 
   const handleUndo = () => {
@@ -229,20 +194,6 @@ const App: React.FC = () => {
     } else {
       document.exitFullscreen();
     }
-  };
-
-  const handleListenLast5Moves = () => {
-    if (moves.length === 0) {
-      speak("No moves to read.");
-      return;
-    }
-    const lastMoves = moves.slice(-5);
-    const textParts = lastMoves.map((m, index) => {
-      const isWhite = (moves.length - lastMoves.length + index) % 2 === 0;
-      const color = isWhite ? "White" : "Black";
-      return `${color} played ${sanToSpeech(m.san)}`;
-    });
-    speak("Last moves are: " + textParts.join(", "));
   };
 
   const game = gameRef.current;
@@ -322,7 +273,7 @@ const App: React.FC = () => {
         <header className="app-header">
           <div>
             <h1 className="app-title">Vocal chess</h1>
-            <p className="app-subtitle">Play chess. Speak your moves.</p>
+            <p className="app-subtitle">Play chess. Make your moves.</p>
           </div>
           <div className="header-actions">
             <Link to="/" className="ghost-btn back-btn">
@@ -342,7 +293,6 @@ const App: React.FC = () => {
               className={["ghost-btn", isAiMode ? "active-toggle" : ""].join(" ")}
               onClick={() => {
                 setIsAiMode(!isAiMode);
-                if (!isAiMode) speak("Computer mode enabled. You play as white.");
               }}
               style={{
                 background: isAiMode ? "var(--accent)" : "transparent",
@@ -371,46 +321,9 @@ const App: React.FC = () => {
           </section>
 
           <section className="side-section">
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">Voice Control</span>
-              </div>
-              <VoiceController
-                onMove={handleVoiceMove}
-                onNewGame={handleNewGame}
-                onUndo={handleUndo}
-                status={voiceStatus}
-                setStatus={setVoiceStatus}
-                setLastCommand={setLastCommand}
-              />
-              <div className="last-command">
-                <span className="label">Last command</span>
-                <span className="value">
-                  {lastCommand || "Say something like: “e2 to e4”"}
-                </span>
-              </div>
-              <div className="tips">
-                <h3>Try saying:</h3>
-                <ul>
-                  <li>“e2 to e4” or just “e4”</li>
-                  <li>“Knight f3” or “nf3”</li>
-                  <li>“Queen takes d5”</li>
-                  <li>“castle kingside” / “undo”</li>
-                </ul>
-              </div>
-            </div>
-
             <div className="card moves-card">
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-header">
                 <span className="card-title">Moves</span>
-                <button
-                  className="ghost-btn"
-                  onClick={handleListenLast5Moves}
-                  disabled={moves.length === 0}
-                  style={{ padding: '4px 8px', fontSize: '0.8rem', outline: 'none' }}
-                >
-                  🔊 Listen
-                </button>
               </div>
               <div className="history-tags">
                 <div />
@@ -451,7 +364,7 @@ const App: React.FC = () => {
         </main>
 
         <footer className="app-footer">
-          <span>Built for voice-first chess in a dark, minimal UI.</span>
+          <span>Built for chess in a dark, minimal UI.</span>
         </footer>
       </div>
     </div>

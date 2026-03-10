@@ -16,7 +16,7 @@ const HomePage: React.FC = () => {
                                 Vocal Chess
                             </h1>
                             <p className="hero-subtitle">
-                                Experience chess like never before. Play with your voice, powered by AI. No keyboard, no mouse—just your command.
+                                Experience chess like never before. A sleek, modern chess experience with AI opponent and game analysis.
                             </p>
                             <Link to="/game" className="cta-button">
                                 <span>Start Playing</span>
@@ -45,19 +45,19 @@ const HomePage: React.FC = () => {
                             />
                         </div>
                         <div className="description-content">
-                            <h2 className="section-title">Play Chess with Your Voice</h2>
+                            <h2 className="section-title">Play Chess Your Way</h2>
                             <div className="description-text">
                                 <p>
-                                    Vocal Chess is a modern implementation of the classic game, designed for accessibility and hands-free play.
-                                    Using advanced browser speech recognition, you can command your pieces simply by speaking their moves.
+                                    Vocal Chess is a modern implementation of the classic game, designed with a beautiful dark UI.
+                                    Play against the built-in AI engine or face off with a friend on the same board.
                                 </p>
                             </div>
                             <div className="instruction-grid">
                                 <div className="instruction-item">
-                                    <span className="instruction-icon">🎙️</span>
+                                    <span className="instruction-icon">♟️</span>
                                     <div>
-                                        <h4 className="instruction-title">Voice Control</h4>
-                                        <p>Move pieces using standard notation like "e2 to e4" or "Knight f3".</p>
+                                        <h4 className="instruction-title">Click to Move</h4>
+                                        <p>Select a piece and click a destination square to make your move.</p>
                                     </div>
                                 </div>
                                 <div className="instruction-item">
@@ -81,7 +81,7 @@ const HomePage: React.FC = () => {
 
                 {/* Footer */}
                 <footer className="home-footer">
-                    <p>Built with React, TypeScript, and Transformers.js</p>
+                    <p>Built with React, TypeScript, and chess.js</p>
                 </footer>
             </div>
         </div>

@@ -1,18 +1,29 @@
 // Sound effects using Web Audio API — no external files needed
 
-const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+let _audioCtx: AudioContext | null = null;
+function getAudioCtx() {
+    if (!_audioCtx) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+            _audioCtx = new AudioContextClass();
+        }
+    }
+    return _audioCtx;
+}
 
 function playTone(freq: number, duration: number, type: OscillatorType = "sine", volume = 0.15) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
     osc.type = type;
-    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-    gain.gain.setValueAtTime(volume, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(ctx.destination);
     osc.start();
-    osc.stop(audioCtx.currentTime + duration);
+    osc.stop(ctx.currentTime + duration);
 }
 
 export function playMoveSound() {
