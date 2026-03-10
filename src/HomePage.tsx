@@ -61,6 +61,13 @@ const HomePage: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="instruction-item">
+                                    <span className="instruction-icon">🎙️</span>
+                                    <div>
+                                        <h4 className="instruction-title">Voice Control</h4>
+                                        <p>Say commands like "knight to f3" backed by lightning-fast Groq APIs.</p>
+                                    </div>
+                                </div>
+                                <div className="instruction-item">
                                     <span className="instruction-icon">🤖</span>
                                     <div>
                                         <h4 className="instruction-title">AI Engine</h4>

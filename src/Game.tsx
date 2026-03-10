@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Chess } from "chess.js";
 import ChessBoard from "./ChessBoard";
+import VoiceController, { VoiceStatus, speak } from "./VoiceController";
 import { findBestMove, evaluate } from "./ChessEngine";
 import { playMoveSound, playCaptureSound, playCheckSound, playGameOverSound, playIllegalMoveSound } from "./sounds";
 
@@ -28,6 +29,8 @@ const App: React.FC = () => {
   const [fen, setFen] = useState(gameRef.current.fen());
   const [moves, setMoves] = useState<MoveRecord[]>([]);
   const movesEndRef = useRef<HTMLDivElement>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
+  const [lastCommand, setLastCommand] = useState<string>("");
 
   const [isAiMode, setIsAiMode] = useState<boolean>(false);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
@@ -60,6 +63,7 @@ const App: React.FC = () => {
             const move = game.move({ from, to, promotion: "q" });
             if (move) {
               safeUpdateGame(from, to);
+              speak(`Computer plays ${move.san}`);
             }
           }
         } catch (e) {
@@ -112,6 +116,71 @@ const App: React.FC = () => {
       const move = gameRef.current.move({ from, to, promotion: "q" });
       if (move) {
         safeUpdateGame(from, to);
+      } else {
+        playIllegalMoveSound();
+      }
+    } catch (e) {
+      playIllegalMoveSound();
+    }
+  };
+
+  const handleVoiceMove = (moveInput: string | { from: string; to: string }) => {
+    try {
+      let move = null;
+      if (typeof moveInput === "string") {
+        try {
+          move = gameRef.current.move(moveInput);
+        } catch (e) {
+          // If standard parsing fails, fallback to natural language parsing
+          const validMoves = gameRef.current.moves({ verbose: true });
+          const normalizedInput = moveInput.toLowerCase().replace(/[-_]/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+          
+          for (const vm of validMoves) {
+            const pieceNames: Record<string, string> = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
+            const pieceName = pieceNames[vm.piece];
+            const aliases: string[] = [];
+
+            aliases.push(`${pieceName} ${vm.to}`);
+            aliases.push(`${pieceName} to ${vm.to}`);
+            aliases.push(`${vm.piece.toUpperCase()}${vm.to}`);
+            aliases.push(vm.san.toLowerCase());
+
+            if (vm.captured) {
+              const capPiece = pieceNames[vm.captured];
+              aliases.push(`${pieceName} takes ${vm.to}`);
+              aliases.push(`${pieceName} captures ${vm.to}`);
+              aliases.push(`${pieceName} takes ${capPiece}`);
+              aliases.push(`${pieceName} takes ${capPiece} on ${vm.to}`);
+              if (vm.piece === 'p') {
+                aliases.push(`pawn takes ${vm.to}`);
+                aliases.push(`${vm.from[0]} takes ${vm.to}`);
+                aliases.push(`${vm.from[0]} takes ${capPiece}`);
+              }
+            }
+
+            if (vm.san === "O-O") {
+              aliases.push("castle kingside", "short castle", "castles kingside");
+            } else if (vm.san === "O-O-O") {
+              aliases.push("castle queenside", "long castle", "castles queenside");
+            }
+
+            const matches = aliases.some(a => {
+               const cleanA = a.toLowerCase().replace(/[-_+#x=]/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+               return cleanA === normalizedInput;
+            });
+
+            if (matches) {
+              move = gameRef.current.move(vm.san);
+              break;
+            }
+          }
+        }
+      } else {
+        move = gameRef.current.move({ ...moveInput, promotion: "q" });
+      }
+
+      if (move) {
+        safeUpdateGame(move.from, move.to);
       } else {
         playIllegalMoveSound();
       }
@@ -176,6 +245,7 @@ const App: React.FC = () => {
     setIsAiThinking(false);
     setAnalysis(null);
     setShowModal(true);
+    setLastCommand("");
     gameRef.current = new Chess();
     safeUpdateGame();
   };
@@ -321,6 +391,20 @@ const App: React.FC = () => {
           </section>
 
           <section className="side-section">
+            <VoiceController
+              onMove={handleVoiceMove}
+              onNewGame={handleNewGame}
+              onUndo={handleUndo}
+              status={voiceStatus}
+              setStatus={setVoiceStatus}
+              setLastCommand={setLastCommand}
+            />
+            {lastCommand && (
+              <div className="last-command">
+                <span className="label">Groq Heard:</span>
+                <span className="value">"{lastCommand}"</span>
+              </div>
+            )}
             <div className="card moves-card">
               <div className="card-header">
                 <span className="card-title">Moves</span>
