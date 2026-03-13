@@ -26,9 +26,13 @@ const normalizeSquare = (input: string): string | null => {
   
   // Common misrecognitions by whisper
   const exactReplacements: Record<string, string> = {
-    "before": "b4", "see4": "c4", "deep4": "d4", "ea": "e8", "hey1": "a1", "day4": "d4",
-    "before1": "b1", "before2": "b2", "before3": "b3", "before4": "b4",
-    "see1": "c1", "see2": "c2", "see3": "c3", "c for": "c4"
+    "before": "b4", "c for": "c4",
+    "before1": "b1", "before2": "b2", "before3": "b3", "before4": "b4", "before5": "b5", "before6": "b6", "before7": "b7", "before8": "b8",
+    "see1": "c1", "see2": "c2", "see3": "c3", "see4": "c4", "see5": "c5", "see6": "c6", "see7": "c7", "see8": "c8",
+    "deep1": "d1", "deep2": "d2", "deep3": "d3", "deep4": "d4", "deep5": "d5", "deep6": "d6", "deep7": "d7", "deep8": "d8",
+    "day1": "d1", "day2": "d2", "day3": "d3", "day4": "d4", "day5": "d5", "day6": "d6", "day7": "d7", "day8": "d8",
+    "ea1": "e1", "ea2": "e2", "ea3": "e3", "ea4": "e4", "ea5": "e5", "ea6": "e6", "ea7": "e7", "ea8": "e8",
+    "hey1": "a1", "hey2": "a2", "hey3": "a3", "hey4": "a4", "hey5": "a5", "hey6": "a6", "hey7": "a7", "hey8": "a8",
   };
   
   if (exactReplacements[cleaned]) cleaned = exactReplacements[cleaned];
@@ -54,8 +58,17 @@ const normalizeSquare = (input: string): string | null => {
 };
 
 const parseVoiceCommand = (transcript: string): string | { from: string; to: string } | null => {
-  const lowerTranscript = transcript.toLowerCase().trim();
+  let lowerTranscript = transcript.toLowerCase().trim();
   
+  // Normalize piece terms for accuracy
+  lowerTranscript = lowerTranscript
+    .replace(/\b(night|nite|light|right|knights|knife)\b/g, "knight")
+    .replace(/\b(bish|shop|vishop|fish up|bishops)\b/g, "bishop")
+    .replace(/\b(rock|look|book|hook|root|rooks|brook|crook|room|rug)\b/g, "rook")
+    .replace(/\b(wean|green|quin|twin|screen|queens|clean|cream|win|quinn)\b/g, "queen")
+    .replace(/\b(ping|ring|thing|kin|kings|bring|sing|kink)\b/g, "king")
+    .replace(/\b(pon|pan|spawn|porn|prom|palm|pawns|pond|bond|pound)\b/g, "pawn");
+
   // Check for global commands
   for (const [command, action] of Object.entries(VOICE_COMMANDS)) {
     if (lowerTranscript.includes(command)) return action;
@@ -203,7 +216,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
       formData.append("model", "whisper-large-v3-turbo");
       formData.append("response_format", "json");
       formData.append("language", "en");
-      formData.append("prompt", "Chess moves: e4, e2 to e4, knight to f3, pawn takes d5, queen d4, bishop c4, rook e1, castle kingside, castle queenside, undo, new game."); 
+      formData.append("prompt", "Chess moves: e4, e2 to e4, knight to f3, pawn takes d5, queen d4, bishop c4, rook e1, castle kingside, castle queenside, O-O, O-O-O, check, checkmate, en passant, promote to queen, resign, draw, a1, b2, c3, d4, e5, f6, g7, h8, captures, undo, new game."); 
 
       try {
         const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
@@ -257,7 +270,12 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
     // Check volume roughly 60 times a second
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
     analyserRef.current.getByteFrequencyData(dataArray);
-    
+
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+    const avgVolume = sum / dataArray.length;
+    const isSpike = avgVolume > 12;
+
     // Draw visualizer
     if (canvasRef.current) {
       const canvas = canvasRef.current;
@@ -265,26 +283,52 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // draw a simple line when idle, else waveform
-        const barWidth = (canvas.width / 32); 
-        const step = Math.floor(dataArray.length / 32);
+        const numBars = 32;
+        const barWidth = canvas.width / numBars;
+        const step = Math.floor(dataArray.length / numBars);
         
-        for (let i = 0; i < 32; i++) {
+        for (let i = 0; i < numBars; i++) {
           const val = dataArray[i * step] || 0;
-          const height = Math.max(2, (val / 255) * canvas.height);
-          ctx.fillStyle = status === "listening" ? "rgba(79, 70, 229, 0.8)" : "rgba(148, 163, 184, 0.2)";
-          ctx.fillRect(i * barWidth + 1, (canvas.height - height) / 2, barWidth - 2, height);
+          
+          let height = 2;
+          if (status === "listening") {
+            const normalized = Math.pow(val / 255, 1.2); // Emphasize spikes
+            height = Math.max(2, normalized * canvas.height * 0.9);
+          }
+          
+          const x = i * barWidth + (barWidth * 0.15);
+          const y = (canvas.height - height) / 2;
+          const w = barWidth * 0.7;
+
+          // Color logic: if idle it's gray. If listening, standard is indigo, spike adds a bright green pop
+          if (status !== "listening") {
+             ctx.fillStyle = "rgba(148, 163, 184, 0.2)";
+             ctx.shadowBlur = 0;
+          } else if (isSpike && val > 120) {
+             ctx.fillStyle = "rgba(52, 211, 153, 1)"; // Bright emerald
+             ctx.shadowColor = "rgba(16, 185, 129, 0.6)";
+             ctx.shadowBlur = 8;
+          } else {
+             ctx.fillStyle = "rgba(99, 102, 241, 0.8)"; // Indigo
+             ctx.shadowColor = "rgba(79, 70, 229, 0.4)";
+             ctx.shadowBlur = 4;
+          }
+
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(x, y, w, height, w / 2);
+          } else {
+            ctx.rect(x, y, w, height);
+          }
+          ctx.fill();
         }
+        ctx.shadowBlur = 0; // Reset shadow
       }
     }
 
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-    const avgVolume = sum / dataArray.length;
-
     totalFramesRef.current++;
 
-    if (avgVolume > 12) { // Speech detected threshold
+    if (isSpike) { // Speech detected threshold
       isSpeakingRef.current = true;
       silenceCounterRef.current = 0;
     } else {
@@ -321,7 +365,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
   return (
     <div className="voice-controller-container">
       <div className="mic-container">
-        <canvas ref={canvasRef} width="120" height="40" className="voice-visualizer"></canvas>
+        <canvas ref={canvasRef} width="160" height="48" className="voice-visualizer"></canvas>
         <button
           className={`mic-button ${status === "listening" ? "mic-button-active" : ""}`}
           onClick={toggleRecording}

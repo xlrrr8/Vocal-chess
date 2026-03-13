@@ -135,6 +135,8 @@ const App: React.FC = () => {
           const validMoves = gameRef.current.moves({ verbose: true });
           const normalizedInput = moveInput.toLowerCase().replace(/[-_]/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
           
+          let bestMatch: { moveSan: string; matchLength: number } | null = null;
+          
           for (const vm of validMoves) {
             const pieceNames: Record<string, string> = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
             const pieceName = pieceNames[vm.piece];
@@ -164,15 +166,23 @@ const App: React.FC = () => {
               aliases.push("castle queenside", "long castle", "castles queenside");
             }
 
-            const matches = aliases.some(a => {
+            for (const a of aliases) {
                const cleanA = a.toLowerCase().replace(/[-_+#x=]/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-               return cleanA === normalizedInput;
-            });
-
-            if (matches) {
-              move = gameRef.current.move(vm.san);
-              break;
+               if (!cleanA) continue;
+               
+               // Match as a whole word within the spoken phrase, or exact string match
+               const isMatch = new RegExp(`\\b${cleanA}\\b`).test(normalizedInput) || cleanA === normalizedInput;
+               
+               if (isMatch) {
+                 if (!bestMatch || cleanA.length > bestMatch.matchLength) {
+                   bestMatch = { moveSan: vm.san, matchLength: cleanA.length };
+                 }
+               }
             }
+          }
+
+          if (bestMatch) {
+            move = gameRef.current.move(bestMatch.moveSan);
           }
         }
       } else {
