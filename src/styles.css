@@ -35,7 +35,7 @@ body,
 #root {
   margin: 0;
   padding: 0;
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
@@ -848,7 +848,7 @@ body {
   justify-content: stretch;
   padding: 0;
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 .home-page::before {
@@ -881,7 +881,7 @@ body {
 }
 
 .home-container {
-  width: 100vw;
+  width: 100%;
   max-width: none;
   margin: 0;
   border-radius: 0;
@@ -897,8 +897,12 @@ body {
 /* Hero Section */
 .hero-section {
   text-align: left;
-  padding: 40px 0 80px;
+  padding: 0;
   position: relative;
+  min-height: calc(100vh - 160px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .hero-grid {
@@ -931,13 +935,15 @@ body {
 }
 
 .hero-image {
-  width: 130%;
+  width: 100%;
   height: auto;
+  max-height: 80vh;
+  object-fit: contain;
   display: block;
   opacity: 0.5;
   mix-blend-mode: lighten;
   filter: contrast(1.1) brightness(0.9);
-  margin-left: -15%;
+  margin: 0 auto;
   mask-image: radial-gradient(circle at center, black 20%, transparent 85%);
   -webkit-mask-image: radial-gradient(circle at center, black 20%, transparent 85%);
 }

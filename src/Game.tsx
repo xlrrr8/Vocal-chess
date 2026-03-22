@@ -260,6 +260,21 @@ const App: React.FC = () => {
     safeUpdateGame();
   };
 
+  const handleReadHistory = () => {
+    const history = gameRef.current.history({ verbose: true });
+    if (history.length === 0) {
+      speak("No moves have been played yet.");
+      return;
+    }
+    const recentMoves = history.slice(-5);
+    const movesText = recentMoves.map((m) => {
+      // Add a slight pause for speech synthesis readability
+      return `${m.color === 'w' ? 'White' : 'Black'} played ${m.san}.`;
+    }).join(" ");
+    const text = `The last ${recentMoves.length} moves were: ${movesText}`;
+    speak(text);
+  };
+
   const handleUndo = () => {
     setIsAiThinking(false);
     gameRef.current.undo();
@@ -405,6 +420,7 @@ const App: React.FC = () => {
               onMove={handleVoiceMove}
               onNewGame={handleNewGame}
               onUndo={handleUndo}
+              onReadHistory={handleReadHistory}
               status={voiceStatus}
               setStatus={setVoiceStatus}
               setLastCommand={setLastCommand}

@@ -6,6 +6,7 @@ interface VoiceControllerProps {
   onMove: (move: string | { from: string; to: string }) => void;
   onNewGame: () => void;
   onUndo: () => void;
+  onReadHistory?: () => void;
   status: VoiceStatus;
   setStatus: (s: VoiceStatus) => void;
   setLastCommand: (cmd: string) => void;
@@ -18,6 +19,10 @@ const VOICE_COMMANDS: Record<string, string> = {
   "undo": "undo",
   "take back": "undo",
   "back": "undo",
+  "history": "history",
+  "last moves": "history",
+  "read moves": "history",
+  "what happened": "history",
 };
 
 const normalizeSquare = (input: string): string | null => {
@@ -109,6 +114,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
   onMove,
   onNewGame,
   onUndo,
+  onReadHistory,
   status,
   setStatus,
   setLastCommand,
@@ -216,7 +222,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
       formData.append("model", "whisper-large-v3-turbo");
       formData.append("response_format", "json");
       formData.append("language", "en");
-      formData.append("prompt", "Chess moves: e4, e2 to e4, knight to f3, pawn takes d5, queen d4, bishop c4, rook e1, castle kingside, castle queenside, O-O, O-O-O, check, checkmate, en passant, promote to queen, resign, draw, a1, b2, c3, d4, e5, f6, g7, h8, captures, undo, new game."); 
+      formData.append("prompt", "Chess moves: e4, e2 to e4, knight to f3, pawn takes d5, queen d4, bishop c4, rook e1, castle kingside, castle queenside, O-O, O-O-O, check, checkmate, en passant, promote to queen, resign, draw, a1, b2, c3, d4, e5, f6, g7, h8, captures, undo, new game, history, last moves, what happened."); 
 
       try {
         const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
@@ -236,6 +242,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
           if (typeof command === "string") {
             if (command === "newgame") onNewGame();
             else if (command === "undo") onUndo();
+            else if (command === "history" && onReadHistory) onReadHistory();
             else onMove(command);
           } else {
             onMove(command);
