@@ -119,6 +119,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
   setStatus,
   setLastCommand,
 }) => {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY || "";
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   
@@ -164,6 +165,11 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
   }, [stopAll]);
 
   const startListening = useCallback(async () => {
+    if (!apiKey) {
+      alert("Please add VITE_GROQ_API_KEY to your .env file!");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -187,7 +193,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
       setStatus("error");
       setTimeout(() => setStatus("idle"), 3000);
     }
-  }, []);
+  }, [apiKey]);
 
   const startRecordingChunk = (stream: MediaStream) => {
     resetVADState();
@@ -219,8 +225,9 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
       formData.append("prompt", "Chess moves: e4, e2 to e4, knight to f3, pawn takes d5, queen d4, bishop c4, rook e1, castle kingside, castle queenside, O-O, O-O-O, check, checkmate, en passant, promote to queen, resign, draw, a1, b2, c3, d4, e5, f6, g7, h8, captures, undo, new game, history, last moves, what happened."); 
 
       try {
-        const res = await fetch("/api/transcribe", {
+        const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
           method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}` },
           body: formData,
         });
 
@@ -388,6 +395,12 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
         {status === "processing" && "Processing..."}
         {status === "error" && "API Error"}
       </div>
+
+      {!apiKey && (
+        <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="api-warning">
+          Get Free Groq API Key
+        </a>
+      )}
     </div>
   );
 };
