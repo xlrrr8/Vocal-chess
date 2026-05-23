@@ -3,121 +3,15 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 export type VoiceStatus = "idle" | "listening" | "processing" | "error";
 
 interface VoiceControllerProps {
-  onMove: (move: string | { from: string; to: string }) => void;
-  onNewGame: () => void;
-  onUndo: () => void;
-  onReadHistory?: () => void;
+  onTranscript: (transcript: string) => void;
   status: VoiceStatus;
   setStatus: (s: VoiceStatus) => void;
-  setLastCommand: (cmd: string) => void;
 }
 
-const VOICE_COMMANDS: Record<string, string> = {
-  "new game": "newgame",
-  "new": "newgame",
-  "start": "newgame",
-  "undo": "undo",
-  "take back": "undo",
-  "back": "undo",
-  "history": "history",
-  "last moves": "history",
-  "read moves": "history",
-  "what happened": "history",
-};
-
-const normalizeSquare = (input: string): string | null => {
-  if (!input) return null;
-  let cleaned = input.toLowerCase().trim();
-  
-  // Common misrecognitions by whisper
-  const exactReplacements: Record<string, string> = {
-    "before": "b4", "c for": "c4",
-    "before1": "b1", "before2": "b2", "before3": "b3", "before4": "b4", "before5": "b5", "before6": "b6", "before7": "b7", "before8": "b8",
-    "see1": "c1", "see2": "c2", "see3": "c3", "see4": "c4", "see5": "c5", "see6": "c6", "see7": "c7", "see8": "c8",
-    "deep1": "d1", "deep2": "d2", "deep3": "d3", "deep4": "d4", "deep5": "d5", "deep6": "d6", "deep7": "d7", "deep8": "d8",
-    "day1": "d1", "day2": "d2", "day3": "d3", "day4": "d4", "day5": "d5", "day6": "d6", "day7": "d7", "day8": "d8",
-    "ea1": "e1", "ea2": "e2", "ea3": "e3", "ea4": "e4", "ea5": "e5", "ea6": "e6", "ea7": "e7", "ea8": "e8",
-    "hey1": "a1", "hey2": "a2", "hey3": "a3", "hey4": "a4", "hey5": "a5", "hey6": "a6", "hey7": "a7", "hey8": "a8",
-  };
-  
-  if (exactReplacements[cleaned]) cleaned = exactReplacements[cleaned];
-
-  cleaned = cleaned.replace(/\b(see|sea)\b/g, "c")
-                   .replace(/\b(bee|be)\b/g, "b")
-                   .replace(/\b(ay)\b/g, "a")
-                   .replace(/\b(dee|tea|day)\b/g, "d")
-                   .replace(/\b(ee)\b/g, "e")
-                   .replace(/\b(ef)\b/g, "f")
-                   .replace(/\b(gee)\b/g, "g")
-                   .replace(/\b(ache|each|age)\b/g, "h")
-                   .replace(/\b(won|one)\b/g, "1")
-                   .replace(/\b(to|too|two)\b/g, "2")
-                   .replace(/\b(tree|three)\b/g, "3")
-                   .replace(/\b(for|four)\b/g, "4")
-                   .replace(/\b(ate|eight)\b/g, "8");
-
-  cleaned = cleaned.replace(/\s+/g, "");
-
-  if (/^[a-h][1-8]$/.test(cleaned)) return cleaned;
-  return null;
-};
-
-const parseVoiceCommand = (transcript: string): string | { from: string; to: string } | null => {
-  let lowerTranscript = transcript.toLowerCase().trim();
-  
-  // Normalize piece terms for accuracy
-  lowerTranscript = lowerTranscript
-    .replace(/\b(night|nite|light|right|knights|knife)\b/g, "knight")
-    .replace(/\b(bish|shop|vishop|fish up|bishops)\b/g, "bishop")
-    .replace(/\b(rock|look|book|hook|root|rooks|brook|crook|room|rug)\b/g, "rook")
-    .replace(/\b(wean|green|quin|twin|screen|queens|clean|cream|win|quinn)\b/g, "queen")
-    .replace(/\b(ping|ring|thing|kin|kings|bring|sing|kink)\b/g, "king")
-    .replace(/\b(pon|pan|spawn|porn|prom|palm|pawns|pond|bond|pound)\b/g, "pawn");
-
-  // Check for global commands
-  for (const [command, action] of Object.entries(VOICE_COMMANDS)) {
-    if (lowerTranscript.includes(command)) return action;
-  }
-  
-  let cleaned = lowerTranscript
-    .replace(/\b(pawn|knight|bishop|rook|queen|king|to|move|go|from)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-    
-  // Match "e2 to e4" or "e2 2 e4"
-  const toPattern = /(\w\d)\s*(?:to|2)\s*(\w\d)/i;
-  const match = cleaned.match(toPattern);
-  if (match) {
-    const from = normalizeSquare(match[1]);
-    const to = normalizeSquare(match[2]);
-    if (from && to) return { from, to };
-  }
-  
-  // Match just 2 squares said together "e2 e4"
-  const squares = cleaned.match(/(\w\d)/g);
-  if (squares && squares.length >= 2) {
-    const from = normalizeSquare(squares[0]);
-    const to = normalizeSquare(squares[1]);
-    if (from && to) return { from, to };
-  }
-  
-  // Match algebraic standard SAN: "Nf3"
-  if (/^[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8][+#]?$/i.test(cleaned.replace(/\s/g, ""))) {
-    return cleaned.replace(/\s/g, "");
-  }
-  
-  // Return the original lowercase transcript for Game.tsx to parse naturally
-  return lowerTranscript;
-};
-
 const VoiceController: React.FC<VoiceControllerProps> = ({
-  onMove,
-  onNewGame,
-  onUndo,
-  onReadHistory,
+  onTranscript,
   status,
   setStatus,
-  setLastCommand,
 }) => {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY || "";
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -133,6 +27,11 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  const statusRef = useRef<VoiceStatus>(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const resetVADState = () => {
     isSpeakingRef.current = false;
@@ -231,22 +130,16 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
           body: formData,
         });
 
-        if (!res.ok) throw new Error("Groq API Error");
+        if (!res.ok) {
+           const errText = await res.text();
+           console.error("Groq API failed:", res.status, errText);
+           throw new Error(`Groq API Error (${res.status}): ${errText}`);
+        }
 
         const data = await res.json();
         const transcript = data.text.trim();
-        if (transcript) setLastCommand(transcript);
-
-        const command = parseVoiceCommand(transcript);
-        if (command) {
-          if (typeof command === "string") {
-            if (command === "newgame") onNewGame();
-            else if (command === "undo") onUndo();
-            else if (command === "history" && onReadHistory) onReadHistory();
-            else onMove(command);
-          } else {
-            onMove(command);
-          }
+        if (transcript) {
+           onTranscript(transcript);
         }
 
         if (!streamRef.current) return;
@@ -255,10 +148,9 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
         startRecordingChunk(streamRef.current);
         monitorAudio();
       } catch (error) {
-        console.error(error);
+        console.error("Voice pipeline error:", error);
         if (!streamRef.current) return;
         setStatus("error");
-        setLastCommand("Error connecting to Groq!");
         setTimeout(() => {
             if (!streamRef.current) return;
             setStatus("listening");
@@ -298,7 +190,8 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
           const val = dataArray[i * step] || 0;
           
           let height = 2;
-          if (status === "listening") {
+          const currentStatus = statusRef.current;
+          if (currentStatus === "listening") {
             const normalized = Math.pow(val / 255, 1.2); // Emphasize spikes
             height = Math.max(2, normalized * canvas.height * 0.9);
           }
@@ -308,7 +201,7 @@ const VoiceController: React.FC<VoiceControllerProps> = ({
           const w = barWidth * 0.7;
 
           // Color logic: if idle it's gray. If listening, standard is indigo, spike adds a bright green pop
-          if (status !== "listening") {
+          if (currentStatus !== "listening") {
              ctx.fillStyle = "rgba(148, 163, 184, 0.2)";
              ctx.shadowBlur = 0;
           } else if (isSpike && val > 120) {

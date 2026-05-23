@@ -5,7 +5,7 @@ import ChessBoard from "./ChessBoard";
 import VoiceController, { VoiceStatus, speak } from "./VoiceController";
 import { findBestMove, evaluate } from "./ChessEngine";
 import { playMoveSound, playCaptureSound, playCheckSound, playGameOverSound, playIllegalMoveSound } from "./sounds";
-
+import { parseVoiceToMove, NLPResult } from "./nlp";
 
 const initialGame = new Chess();
 
@@ -30,7 +30,8 @@ const App: React.FC = () => {
   const [moves, setMoves] = useState<MoveRecord[]>([]);
   const movesEndRef = useRef<HTMLDivElement>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
-  const [lastCommand, setLastCommand] = useState<string>("");
+  const [pipelineResult, setPipelineResult] = useState<NLPResult | null>(null);
+  const [ambiguousChoices, setAmbiguousChoices] = useState<import("chess.js").Move[]>([]);
 
   const [isAiMode, setIsAiMode] = useState<boolean>(false);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
@@ -124,79 +125,44 @@ const App: React.FC = () => {
     }
   };
 
-  const handleVoiceMove = (moveInput: string | { from: string; to: string }) => {
+  const handleVoiceTranscript = (transcript: string) => {
     try {
-      let move = null;
-      if (typeof moveInput === "string") {
-        try {
-          move = gameRef.current.move(moveInput);
-        } catch (e) {
-          // If standard parsing fails, fallback to natural language parsing
-          const validMoves = gameRef.current.moves({ verbose: true });
-          const normalizedInput = moveInput.toLowerCase().replace(/[-_]/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-          
-          let bestMatch: { moveSan: string; matchLength: number } | null = null;
-          
-          for (const vm of validMoves) {
-            const pieceNames: Record<string, string> = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
-            const pieceName = pieceNames[vm.piece];
-            const aliases: string[] = [];
-
-            aliases.push(`${pieceName} ${vm.to}`);
-            aliases.push(`${pieceName} to ${vm.to}`);
-            aliases.push(`${vm.piece.toUpperCase()}${vm.to}`);
-            aliases.push(vm.san.toLowerCase());
-
-            if (vm.captured) {
-              const capPiece = pieceNames[vm.captured];
-              aliases.push(`${pieceName} takes ${vm.to}`);
-              aliases.push(`${pieceName} captures ${vm.to}`);
-              aliases.push(`${pieceName} takes ${capPiece}`);
-              aliases.push(`${pieceName} takes ${capPiece} on ${vm.to}`);
-              if (vm.piece === 'p') {
-                aliases.push(`pawn takes ${vm.to}`);
-                aliases.push(`${vm.from[0]} takes ${vm.to}`);
-                aliases.push(`${vm.from[0]} takes ${capPiece}`);
-              }
-            }
-
-            if (vm.san === "O-O") {
-              aliases.push("castle kingside", "short castle", "castles kingside");
-            } else if (vm.san === "O-O-O") {
-              aliases.push("castle queenside", "long castle", "castles queenside");
-            }
-
-            for (const a of aliases) {
-               const cleanA = a.toLowerCase().replace(/[-_+#x=]/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-               if (!cleanA) continue;
-               
-               // Match as a whole word within the spoken phrase, or exact string match
-               const isMatch = new RegExp(`\\b${cleanA}\\b`).test(normalizedInput) || cleanA === normalizedInput;
-               
-               if (isMatch) {
-                 if (!bestMatch || cleanA.length > bestMatch.matchLength) {
-                   bestMatch = { moveSan: vm.san, matchLength: cleanA.length };
-                 }
-               }
-            }
-          }
-
-          if (bestMatch) {
-            move = gameRef.current.move(bestMatch.moveSan);
-          }
-        }
-      } else {
-        move = gameRef.current.move({ ...moveInput, promotion: "q" });
+      const result = parseVoiceToMove(transcript, gameRef.current);
+      setPipelineResult(result);
+      
+      if (result.action === "error" || result.action === "ambiguous") {
+         speak(result.interpretationFeedback);
       }
 
-      if (move) {
-        safeUpdateGame(move.from, move.to);
-      } else {
-        playIllegalMoveSound();
+      if (result.action === "move" && result.parsedMove) {
+          const move = gameRef.current.move(result.parsedMove);
+          if (move) safeUpdateGame(move.from, move.to);
+          else playIllegalMoveSound();
+          setAmbiguousChoices([]);
+      } else if (result.action === "ambiguous" && result.ambiguousMoves) {
+          setAmbiguousChoices(result.ambiguousMoves);
+      } else if (result.action === "global_command") {
+          if (result.globalCommand === "newgame") handleNewGame();
+          else if (result.globalCommand === "undo") handleUndo();
+          else if (result.globalCommand === "history") handleReadHistory();
+      } else if (result.action === "error") {
+          playIllegalMoveSound();
       }
-    } catch (e) {
+    } catch(e) {
       playIllegalMoveSound();
     }
+  };
+
+  const executeClarification = (move: import("chess.js").Move) => {
+      try {
+          const m = gameRef.current.move(move);
+          if (m) safeUpdateGame(m.from, m.to);
+          else playIllegalMoveSound();
+      } catch(e) { playIllegalMoveSound(); }
+      setAmbiguousChoices([]);
+      if (pipelineResult) {
+          setPipelineResult({...pipelineResult, action: "move", interpretationFeedback: `Moving ${move.san}.`, parsedStr: move.san});
+      }
   };
 
   const runAnalysis = () => {
@@ -255,7 +221,8 @@ const App: React.FC = () => {
     setIsAiThinking(false);
     setAnalysis(null);
     setShowModal(true);
-    setLastCommand("");
+    setPipelineResult(null);
+    setAmbiguousChoices([]);
     gameRef.current = new Chess();
     safeUpdateGame();
   };
@@ -417,19 +384,32 @@ const App: React.FC = () => {
 
           <section className="side-section">
             <VoiceController
-              onMove={handleVoiceMove}
-              onNewGame={handleNewGame}
-              onUndo={handleUndo}
-              onReadHistory={handleReadHistory}
+              onTranscript={handleVoiceTranscript}
               status={voiceStatus}
               setStatus={setVoiceStatus}
-              setLastCommand={setLastCommand}
             />
-            {lastCommand && (
-              <div className="last-command">
-                <span className="label">Groq Heard:</span>
-                <span className="value">"{lastCommand}"</span>
+            {pipelineResult && (
+              <div className="pipeline-panel">
+                <div className="pipeline-step"><span className="label">Raw:</span> "{pipelineResult.rawTranscript}"</div>
+                <div className="pipeline-step"><span className="label">Norm:</span> "{pipelineResult.normalizedCommand}"</div>
+                <div className="pipeline-step"><span className="label">Parsed:</span> {pipelineResult.parsedStr}</div>
+                <div className={`pipeline-feedback ${pipelineResult.action === 'error' ? 'error' : ''}`}>
+                   {pipelineResult.interpretationFeedback}
+                </div>
               </div>
+            )}
+            {ambiguousChoices.length > 0 && (
+                <div className="ambiguity-panel">
+                   <p className="ambiguity-title">Ambiguous move! Did you mean:</p>
+                   <div className="ambiguity-options">
+                      {ambiguousChoices.map(m => (
+                         <button key={m.san} onClick={() => executeClarification(m)} className="ghost-btn primary-bordered">
+                            {m.san} ({m.from} &rarr; {m.to})
+                         </button>
+                      ))}
+                      <button onClick={() => setAmbiguousChoices([])} className="ghost-btn danger">Cancel</button>
+                   </div>
+                </div>
             )}
             <div className="card moves-card">
               <div className="card-header">
